@@ -30,7 +30,7 @@ async def startup_event():
 async def shutdown_event():
     """Stop the sync service when the API stops."""
     # Only try to stop if it's running
-    if sync_service.running:
+    if sync_service.is_running:
         sync_service.stop()
 
 @app.get("/")
@@ -117,7 +117,7 @@ def sync_status():
     """Check the status of the sync service."""
     disable_sync = os.environ.get("DISABLE_SYNC", "0")
     return {
-        "running": sync_service.running,
+        "running": sync_service.is_running,
         "sync_interval_minutes": sync_service.sync_interval,
         "disabled": disable_sync == "1"
     }
@@ -129,7 +129,7 @@ def trigger_sync():
     if disable_sync == "1":
         return {"status": "error", "message": "Sync service is disabled"}
 
-    if not sync_service.running:
+    if not sync_service.is_running:
         return {"status": "error", "message": "Sync service is not running"}
 
     # Run sync in a separate thread
