@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 class EdStemClient:
     def __init__(self):
         # Load environment variables first
-        if not load_dotenv():
-            raise ValueError("Failed to load environment variables")
+        load_dotenv():
 
         # Initialize API and login
         self.api = EdAPI()
