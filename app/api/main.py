@@ -1,10 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Header
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import json
 import os
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import secrets
+from pathlib import Path
+import shutil
+import sqlite3
 
 from app.database.database import get_db, engine
 from app.models.thread import Thread, Base
@@ -17,6 +21,10 @@ app = FastAPI()
 
 # Load the sentence transformer model
 model = SentenceTransformer('all-mpnet-base-v2')
+
+# Generate a random token on startup
+UPLOAD_TOKEN = secrets.token_urlsafe(32)
+print(f"Database upload token (save this): {UPLOAD_TOKEN}")
 
 @app.on_event("startup")
 async def startup_event():
@@ -137,3 +145,39 @@ def trigger_sync():
     threading.Thread(target=sync_service._sync_threads).start()
 
     return {"status": "success", "message": "Sync triggered"}
+
+@app.post("/admin/upload-db")
+async def upload_database(
+    file: UploadFile = File(...),
+    x_upload_token: Optional[str] = Header(None)
+):
+    """Temporary endpoint to upload database dump."""
+    if not x_upload_token or x_upload_token != UPLOAD_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    if not file.filename.endswith('.sql'):
+        raise HTTPException(status_code=400, detail="Only SQL dump files are allowed")
+
+    # Save the uploaded file
+    temp_path = Path("temp_dump.sql")
+    try:
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Create a new database connection
+        db_path = Path("edapi.db")
+        conn = sqlite3.connect(str(db_path))
+
+        # Execute the SQL dump
+        with temp_path.open() as f:
+            conn.executescript(f.read())
+        conn.close()
+
+        # Clean up
+        temp_path.unlink()
+
+        return {"status": "success", "message": "Database updated successfully"}
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise HTTPException(status_code=500, detail=str(e))
