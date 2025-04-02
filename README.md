@@ -48,13 +48,33 @@ python -m uvicorn app.api.main:app --reload
 python -m app.bot.bot
 ```
 
-## Usage
+## Deployment on Render
 
-The Telegram bot supports the following commands:
-- `/start` - Start the bot
-- `/help` - Show help message
-- `/search <query>` - Search for threads
-- `/similar <thread_id>` - Find similar threads
+### Setting Up Persistent Storage
+
+1. Create a new Web Service on Render
+2. Add a Disk:
+   - Go to your service's "Disks" tab
+   - Click "Add Disk"
+   - Set mount path to `/data`
+   - Choose an appropriate size (e.g., 1 GB)
+
+### Environment Variables
+
+Set the following environment variables in your Render dashboard:
+- `ED_API_TOKEN`: Your ED Stem API token
+- `ED_API_HOST`: ED Stem API host (https://eu.edstem.org/api)
+- `ED_COURSE_ID`: Your course ID
+- `TELEGRAM_TOKEN`: Your Telegram bot token
+- `API_URL`: Your Render service URL
+- `SYNC_INTERVAL_MINUTES`: Sync interval (default: 120)
+- `MAX_THREADS_PER_SYNC`: Max threads per sync (default: 20)
+- `DISABLE_SYNC`: Set to 0 to enable syncing
+
+The application will automatically:
+1. Detect it's running on Render
+2. Use the persistent disk at `/data` for the database
+3. Maintain data between deployments
 
 ## API Endpoints
 
