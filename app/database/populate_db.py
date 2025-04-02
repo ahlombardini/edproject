@@ -44,30 +44,30 @@ def populate_db():
 
                 if len(df) == 0:
                     print(f"Empty file {filename}, skipping...")
-                    continue
+                        continue
 
                 # Take the first row since each CSV should contain one thread
                 row = df.iloc[0]
 
-                # Generate embedding
-                combined_text = combine_text(row)
-                embedding = model.encode(combined_text)
+                    # Generate embedding
+                    combined_text = combine_text(row)
+                    embedding = model.encode(combined_text)
 
-                # Create new thread
-                thread = Thread(
+                    # Create new thread
+                    thread = Thread(
                     ed_thread_id=thread_id,
-                    title=row.get('title', ''),
-                    content=row.get('content', ''),
-                    document=row.get('document', ''),
-                    category=row.get('category', ''),
-                    subcategory=row.get('subcategory', ''),
-                    content_and_img_desc=row.get('content_and_img_desc', ''),
-                    embedding=json.dumps(embedding.tolist()),
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
-                )
+                        title=row.get('title', ''),
+                        content=row.get('content', ''),
+                        document=row.get('document', ''),
+                        category=row.get('category', ''),
+                        subcategory=row.get('subcategory', ''),
+                        content_and_img_desc=row.get('content_and_img_desc', ''),
+                        embedding=json.dumps(embedding.tolist()),
+                        created_at=datetime.now(),
+                        updated_at=datetime.now()
+                    )
 
-                db.add(thread)
+                    db.add(thread)
                 db.commit()
                 print(f"Processed thread {thread_id}")
 
