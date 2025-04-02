@@ -63,22 +63,112 @@ class SyncService:
     def __init__(self):
         self.edstem_client = EdStemClient()
         self.model = SentenceTransformer('all-mpnet-base-v2')
-        # Sync every 2 hours instead of 6 since we have more requests per hour now
-        self.sync_interval = int(os.getenv("SYNC_INTERVAL_MINUTES", "120"))
-        # Can process more threads now
-        self.max_threads_per_sync = int(os.getenv("MAX_THREADS_PER_SYNC", "3"))
-        self.running = False
+        self.rate_limiter = RateLimiter()
+        self.max_threads_per_sync = int(os.getenv('MAX_THREADS_PER_SYNC', '2'))
+        self.sync_interval = int(os.getenv('SYNC_INTERVAL_MINUTES', '360'))
+        self.is_running = False
         self.thread = None
-        self.rate_limiter = RateLimiter(max_requests_per_hour=6)  # Increased to 6 per hour
-        self.queue = []  # Queue of threads to process
+
+    def initial_sync(self):
+        """Perform initial sync to populate database with all threads."""
+        logger.info("Starting initial sync to populate database...")
+        db = SessionLocal()
+        try:
+            # Fetch all threads from ED Stem without date filtering
+            threads = self.edstem_client.get_threads(limit=1000)  # Get a large batch
+            logger.info(f"Retrieved {len(threads)} threads from ED Stem")
+
+            if not threads:
+                logger.warning("No threads retrieved from ED Stem")
+                return
+
+            # Process the threads
+            df = pd.DataFrame(threads)
+
+            # Filter non-private questions only
+            if 'is_private' in df.columns:
+                df = df[df['is_private'] == False]
+
+            # Select only relevant columns
+            columns = ['id', 'content', 'document', 'title', 'type', 'category', 'subcategory']
+            for col in columns:
+                if col not in df.columns:
+                    df[col] = None
+
+            df = df[columns]
+            questions_df = df[df['type'] == 'question']
+
+            # Process each thread
+            for _, row in questions_df.iterrows():
+                thread_id = str(row['id'])
+
+                # Check if thread already exists
+                existing_thread = db.query(ThreadModel).filter(
+                    ThreadModel.ed_thread_id == thread_id
+                ).first()
+
+                if existing_thread:
+                    continue
+
+                # Get thread details
+                thread_details = self.edstem_client.get_thread_details(thread_id)
+
+                # Extract thread info
+                thread_info = {
+                    'ed_thread_id': thread_id,
+                    'title': row.get('title', ''),
+                    'content': row.get('content', ''),
+                    'document': row.get('document', ''),
+                    'category': self._extract_name(row.get('category')),
+                    'subcategory': self._extract_name(row.get('subcategory')),
+                    'content_and_img_desc': self._extract_content(thread_details),
+                    'created_at': datetime.now(),
+                    'updated_at': datetime.now()
+                }
+
+                # Generate embedding
+                combined_text = self._combine_text(thread_info)
+                embedding = self.model.encode(combined_text)
+                thread_info['embedding'] = json.dumps(embedding.tolist())
+
+                # Create new thread
+                thread = ThreadModel(**thread_info)
+                db.add(thread)
+
+                # Commit every few threads
+                if int(thread_id) % 10 == 0:
+                    db.commit()
+                    logger.info(f"Processed {thread_id}")
+
+            # Final commit
+            db.commit()
+            logger.info("Initial sync completed successfully")
+
+        except Exception as e:
+            logger.error(f"Error during initial sync: {str(e)}")
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def _combine_text(self, thread_info):
+        """Combine thread text fields for embedding."""
+        return f"{thread_info['title']} {thread_info['document']} {thread_info['content_and_img_desc']}"
+
+    def _extract_content(self, thread_details):
+        """Extract content and image descriptions from thread details."""
+        if not thread_details:
+            return ""
+        # Add your content extraction logic here
+        return str(thread_details.get('content', ''))
 
     def start(self):
         """Start the sync service in a separate thread."""
-        if self.running:
+        if self.is_running:
             logger.warning("Sync service is already running")
             return
 
-        self.running = True
+        self.is_running = True
         self.thread = Thread(target=self._sync_loop)
         self.thread.daemon = True
         self.thread.start()
@@ -86,18 +176,18 @@ class SyncService:
 
     def stop(self):
         """Stop the sync service."""
-        if not self.running:
+        if not self.is_running:
             logger.warning("Sync service is not running")
             return
 
-        self.running = False
+        self.is_running = False
         if self.thread:
             self.thread.join(timeout=10)
         logger.info("Stopped sync service")
 
     def _sync_loop(self):
         """Main sync loop."""
-        while self.running:
+        while self.is_running:
             try:
                 logger.info("Starting sync with ED Stem API")
                 self._sync_threads()
@@ -107,7 +197,7 @@ class SyncService:
 
             # Sleep for the specified interval
             for _ in range(self.sync_interval * 60):
-                if not self.running:
+                if not self.is_running:
                     break
                 time.sleep(1)
 
@@ -234,19 +324,6 @@ class SyncService:
         if isinstance(obj, dict) and 'name' in obj:
             return obj.get('name', '')
         return str(obj) if obj else ''
-
-    def _extract_content(self, thread_details):
-        """Extract content from a thread detail object."""
-        try:
-            content = thread_details.get('content', {}).get('content', '')
-            document = thread_details.get('content', {}).get('document', '')
-            return f"{content} {document}"
-        except Exception:
-            return ""
-
-    def _combine_text(self, thread):
-        """Combine thread text fields for embedding."""
-        return f"{thread.get('title', '')} {thread.get('document', '')} {thread.get('content_and_img_desc', '')}"
 
 # Singleton instance
 sync_service = SyncService()

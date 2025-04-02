@@ -2,3 +2,4 @@
 /datacopy
 /data/
 *.db
+.env
