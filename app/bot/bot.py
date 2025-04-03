@@ -38,15 +38,15 @@ def help_command(update: Update, context: CallbackContext) -> None:
     help_text = """
                 Available commands:
 
-                📝 Search Commands:
-                /find <question> - Find similar questions
-                /similar <thread_id> - Find similar threads to a specific one
+    📝 Search Commands:
+        /find <question> - Find similar questions
+        /similar <thread_id> - Find similar threads to a specific one
 
 
-                Example usage:
-                • /find how to implement the cache?
-                • /similar 1234567890
-                """
+    Example usage:
+        • /find how to implement the cache?
+        • /similar 1234567890
+"""
     update.message.reply_text(help_text)
 
 def search_questions(update: Update, context: CallbackContext) -> None:
