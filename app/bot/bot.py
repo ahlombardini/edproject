@@ -24,12 +24,10 @@ def start(update: Update, context: CallbackContext) -> None:
 I can help you find and analyze ED threads. Here are my main commands:
 
 📝 Basic Search:
-/q <your question> - Search for similar questions
+/find <your question> - Search for similar questions
 /part <project part> - Show questions for a specific project part
 2
-📊 Analysis:
-/summary <project part> - Get a summary of common questions
-/trending - Show most discussed topics
+
 
 Try /help for more details!
 """
@@ -41,12 +39,12 @@ def help_command(update: Update, context: CallbackContext) -> None:
                 Available commands:
 
                 📝 Search Commands:
-                /q <question> - Find similar questions
+                /find <question> - Find similar questions
                 /similar <thread_id> - Find similar threads to a specific one
 
 
                 Example usage:
-                • /q how to implement the cache?
+                • /find how to implement the cache?
                 • /similar 1234567890
                 """
     update.message.reply_text(help_text)
