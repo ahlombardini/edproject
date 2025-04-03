@@ -5,7 +5,7 @@ import json
 import os
 from sentence_transformers import SentenceTransformer
 import numpy as np
-
+from sklearn.metrics.pairwise import cosine_similarity
 from app.database.database import get_db, engine
 from app.models.thread import Thread, Base
 from app.api.sync_service import sync_service
@@ -97,8 +97,7 @@ def find_similar_from_input(query: dict, limit: int = 5, db: Session = Depends(g
     thread_embeddings = [np.array(json.loads(t.embedding)) for t in all_threads]
 
     # Calculate similarities
-    similarities = [np.dot(user_embedding, emb) / (np.linalg.norm(user_embedding) * np.linalg.norm(emb))
-                   for emb in thread_embeddings]
+    similarities = [cosine_similarity(user_embedding, emb) for emb in thread_embeddings]
 
     # Get indices of top similar threads
     similar_indices = np.argsort(similarities)[::-1][:limit]
@@ -120,6 +119,62 @@ def sync_status():
         "running": sync_service.is_running,
         "sync_interval_minutes": sync_service.sync_interval,
         "disabled": disable_sync == "1"
+    }
+
+@app.get("/project/part/{part}")
+def get_project_part(part: int, db: Session = Depends(get_db)):
+    """Get a summary of distinct topics and their frequency for a project part."""
+    if part not in range(1, 12):
+        raise HTTPException(status_code=400, detail="Invalid project part number")
+
+    # Get all threads for this project part
+    threads = db.query(Thread).filter(
+        Thread.category == "projet",
+        Thread.subcategory == f"Étape {part}"
+    ).all()
+    if not threads:
+        return {"topics": [], "total_threads": 0}
+
+    # Convert embeddings from JSON strings to numpy arrays
+    embeddings = [np.array(json.loads(thread.embedding)).reshape(1, -1) for thread in threads]
+
+    # Use cosine similarity to group similar questions
+    # We'll consider questions similar if their similarity is above 0.7
+    SIMILARITY_THRESHOLD = 0.7
+    topics = []
+    used_indices = set()
+
+    for i, emb in enumerate(embeddings):
+        if i in used_indices:
+            continue
+
+        # Find all similar threads to this one
+        similar_threads = []
+        for j, other_emb in enumerate(embeddings):
+            if j in used_indices:
+                continue
+
+            similarity = float(cosine_similarity(emb, other_emb)[0][0])
+            if similarity >= SIMILARITY_THRESHOLD:
+                similar_threads.append(threads[j])
+                used_indices.add(j)
+
+        # Create a topic entry
+        if similar_threads:
+            # Use the first thread as the representative question
+            representative = similar_threads[0]
+            topics.append({
+                "title": representative.title,
+                "thread_count": len(similar_threads),
+                "related_threads": [t.title for t in similar_threads[1:]]
+            })
+
+    # Sort topics by thread count in descending order
+    topics.sort(key=lambda x: x["thread_count"], reverse=True)
+
+    return {
+        "topics": topics,
+        "total_threads": len(threads)
     }
 
 @app.post("/sync/trigger")
