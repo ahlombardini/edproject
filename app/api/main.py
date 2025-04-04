@@ -98,17 +98,17 @@ def find_similar_from_input(query: dict, limit: int = 5, db: Session = Depends(g
     if not user_text:
         raise HTTPException(status_code=400, detail="Text input is required")
 
-    # Generate embedding for the user input
-    user_embedding = model.encode(user_text)
+    # Generate embedding for the user input and reshape to 2D
+    user_embedding = model.encode(user_text).reshape(1, -1)
 
     # Get all threads
     all_threads = db.query(Thread).all()
 
-    # Convert thread embeddings from JSON strings to numpy arrays
-    thread_embeddings = [np.array(json.loads(t.embedding)) for t in all_threads]
+    # Convert thread embeddings from JSON strings to numpy arrays and reshape to 2D
+    thread_embeddings = [np.array(json.loads(t.embedding)).reshape(1, -1) for t in all_threads]
 
-    # Calculate similarities
-    similarities = [cosine_similarity(user_embedding, emb) for emb in thread_embeddings]
+    # Calculate similarities using cosine_similarity
+    similarities = [float(cosine_similarity(user_embedding, emb)[0][0]) for emb in thread_embeddings]
 
     # Get indices of top similar threads
     similar_indices = np.argsort(similarities)[::-1][:limit]
