@@ -6,6 +6,7 @@ import os
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from fastapi.middleware.cors import CORSMiddleware
 from app.database.database import get_db, engine
 from app.models.thread import Thread, Base
 from app.api.sync_service import sync_service
@@ -15,6 +16,15 @@ from app.api.auth import get_api_key
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 # Load the sentence transformer model
 model = SentenceTransformer('all-mpnet-base-v2')
