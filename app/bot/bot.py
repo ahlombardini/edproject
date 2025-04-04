@@ -22,20 +22,28 @@ def check_environment():
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
     if not TELEGRAM_TOKEN:
         missing_vars.append("TELEGRAM_TOKEN")
+    else:
+        print(f"✓ TELEGRAM_TOKEN found (starts with: {TELEGRAM_TOKEN[:4]}...)")
 
     # Check for API key
     API_KEY = os.getenv("API_KEY")
     if not API_KEY:
         missing_vars.append("API_KEY")
+    else:
+        print(f"✓ API_KEY found (starts with: {API_KEY[:4]}...)")
 
     if missing_vars:
-        print("Error: Missing required environment variables:")
+        print("\n❌ Error: Missing required environment variables:")
         for var in missing_vars:
             print(f"- {var}")
-        print("\nPlease set these variables in your .env file or environment.")
-        print("Example .env file:")
+        print("\nPlease set these variables in your environment.")
+        print("Required variables:")
         print("TELEGRAM_TOKEN=your_telegram_bot_token")
         print("API_KEY=your_api_key")
+        print("\nCurrent environment variables:")
+        print("PATH:", os.getenv("PATH", "Not set"))
+        print("PYTHONPATH:", os.getenv("PYTHONPATH", "Not set"))
+        print("All environment variables:", list(os.environ.keys()))
         sys.exit(1)
 
     return TELEGRAM_TOKEN, API_KEY
@@ -43,7 +51,6 @@ def check_environment():
 # Get environment variables
 TELEGRAM_TOKEN, API_KEY = check_environment()
 API_URL = os.getenv("API_URL", "http://localhost:8000")
-
 # Headers for API requests
 HEADERS = {"X-API-Key": API_KEY}
 
@@ -186,6 +193,13 @@ def button(update: Update, context: CallbackContext) -> None:
 def main() -> None:
     """Start the bot."""
     try:
+        print("\n🤖 Starting bot initialization...")
+        print(f"🌐 API URL: {API_URL}")
+
+        if not TELEGRAM_TOKEN:
+            raise ValueError("TELEGRAM_TOKEN is empty or not set")
+
+        print(f"🔑 Using token starting with: {TELEGRAM_TOKEN[:4]}...")
         updater = Updater(TELEGRAM_TOKEN)
         dispatcher = updater.dispatcher
 
@@ -200,14 +214,17 @@ def main() -> None:
         # Button handler
         dispatcher.add_handler(CallbackQueryHandler(button))
 
-        print("🤖 Bot is starting up...")
-        print(f"🌐 API URL: {API_URL}")
+        print("📡 Starting polling...")
         updater.start_polling()
         print("✅ Bot is ready!")
         updater.idle()
 
     except Exception as e:
-        print(f"❌ Error starting bot: {str(e)}")
+        print(f"\n❌ Error starting bot: {str(e)}")
+        print("\nDebug information:")
+        print(f"TELEGRAM_TOKEN exists: {'Yes' if TELEGRAM_TOKEN else 'No'}")
+        print(f"TELEGRAM_TOKEN length: {len(TELEGRAM_TOKEN) if TELEGRAM_TOKEN else 0}")
+        print(f"API_URL: {API_URL}")
         sys.exit(1)
 
 if __name__ == '__main__':
