@@ -8,13 +8,61 @@ from telegram.ext import (
 )
 import requests
 import os
+import sys
 from dotenv import load_dotenv
 from collections import defaultdict
 
 load_dotenv()
 
+def check_environment():
+    """Check if all required environment variables are set."""
+    missing_vars = []
+
+    # Check for Telegram token
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+    if not TELEGRAM_TOKEN:
+        missing_vars.append("TELEGRAM_TOKEN")
+
+    # Check for API key
+    API_KEY = os.getenv("API_KEY")
+    if not API_KEY:
+        missing_vars.append("API_KEY")
+
+    if missing_vars:
+        print("Error: Missing required environment variables:")
+        for var in missing_vars:
+            print(f"- {var}")
+        print("\nPlease set these variables in your .env file or environment.")
+        print("Example .env file:")
+        print("TELEGRAM_TOKEN=your_telegram_bot_token")
+        print("API_KEY=your_api_key")
+        sys.exit(1)
+
+    return TELEGRAM_TOKEN, API_KEY
+
+# Get environment variables
+TELEGRAM_TOKEN, API_KEY = check_environment()
 API_URL = os.getenv("API_URL", "http://localhost:8000")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+# Headers for API requests
+HEADERS = {"X-API-Key": API_KEY}
+
+def make_api_request(method: str, endpoint: str, **kwargs):
+    """Make an authenticated request to the API."""
+    url = f"{API_URL}/{endpoint.lstrip('/')}"
+    try:
+        response = requests.request(
+            method,
+            url,
+            headers=HEADERS,
+            **kwargs
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        if hasattr(e.response, 'status_code') and e.response.status_code == 403:
+            raise ValueError("Invalid API key or authentication failed")
+        raise e
 
 def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
@@ -26,7 +74,7 @@ I can help you find and analyze ED threads. Here are my main commands:
 📝 Basic Search:
 /q <your question> - Search for similar questions
 /part <project part> - Show questions for a specific project part
-2
+
 📊 Analysis:
 /summary <project part> - Get a summary of common questions
 /trending - Show most discussed topics
@@ -44,7 +92,6 @@ def help_command(update: Update, context: CallbackContext) -> None:
                 /q <question> - Find similar questions
                 /similar <thread_id> - Find similar threads to a specific one
 
-
                 Example usage:
                 • /q how to implement the cache?
                 • /similar 1234567890
@@ -59,11 +106,11 @@ def search_questions(update: Update, context: CallbackContext) -> None:
 
     query = ' '.join(context.args)
     try:
-        response = requests.post(
-            f"{API_URL}/search/input",
+        similar_threads = make_api_request(
+            'POST',
+            '/search/input',
             json={"text": query}
         )
-        similar_threads = response.json()
 
         if not similar_threads:
             update.message.reply_text('No similar questions found.')
@@ -74,15 +121,12 @@ def search_questions(update: Update, context: CallbackContext) -> None:
             similarity = thread.get('similarity', 0) * 100
             message += display_thread(thread, similarity)
 
-
         update.message.reply_text(message)
 
+    except ValueError as e:
+        update.message.reply_text(f'Authentication error: {str(e)}')
     except Exception as e:
         update.message.reply_text(f'Error occurred: {str(e)}')
-
-
-
-
 
 def similar(update: Update, context: CallbackContext) -> None:
     """Find similar threads."""
@@ -92,8 +136,7 @@ def similar(update: Update, context: CallbackContext) -> None:
 
     thread_id = context.args[0]
     try:
-        response = requests.get(f"{API_URL}/search/similar/{thread_id}")
-        similar_threads = response.json()
+        similar_threads = make_api_request('GET', f'/search/similar/{thread_id}')
 
         if not similar_threads:
             update.message.reply_text('No similar threads found.')
@@ -105,8 +148,11 @@ def similar(update: Update, context: CallbackContext) -> None:
             message += display_thread(thread, similarity)
         update.message.reply_text(message)
 
+    except ValueError as e:
+        update.message.reply_text(f'Authentication error: {str(e)}')
     except Exception as e:
         update.message.reply_text(f'Error occurred: {str(e)}')
+
 def display_thread(thread, similarity):
     message =  f"• {thread['title']}\n"
     message += f"• EdWard has found a {similarity:3.0f}%  similarity\n"
@@ -122,8 +168,7 @@ def button(update: Update, context: CallbackContext) -> None:
     if query.data.startswith('similar_'):
         thread_id = query.data.split('_')[1]
         try:
-            response = requests.get(f"{API_URL}/search/similar/{thread_id}")
-            similar_threads = response.json()
+            similar_threads = make_api_request('GET', f'/search/similar/{thread_id}')
 
             if not similar_threads:
                 query.message.reply_text('No similar threads found.')
@@ -132,33 +177,41 @@ def button(update: Update, context: CallbackContext) -> None:
             message = "🔍 Similar threads:\n\n"
             for thread in similar_threads:
                 similarity = thread.get('similarity', 0) * 100
-                message += display_thread(thread)
+                message += display_thread(thread, similarity)
 
             query.message.reply_text(message)
 
+        except ValueError as e:
+            query.message.reply_text(f'Authentication error: {str(e)}')
         except Exception as e:
             query.message.reply_text(f'Error occurred: {str(e)}')
 
 def main() -> None:
     """Start the bot."""
-    updater = Updater(TELEGRAM_TOKEN)
+    try:
+        updater = Updater(TELEGRAM_TOKEN)
+        dispatcher = updater.dispatcher
 
-    dispatcher = updater.dispatcher
+        # Basic commands
+        dispatcher.add_handler(CommandHandler("start", start))
+        dispatcher.add_handler(CommandHandler("help", help_command))
 
-    # Basic commands
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help_command))
+        # Search commands
+        dispatcher.add_handler(CommandHandler("similar", similar))
+        dispatcher.add_handler(CommandHandler("find", search_questions))
 
-    # Search commands
-    dispatcher.add_handler(CommandHandler("similar", similar))
-    dispatcher.add_handler(CommandHandler("find", search_questions))
-    # Analysis commands
+        # Button handler
+        dispatcher.add_handler(CallbackQueryHandler(button))
 
-    # Button handler
-    dispatcher.add_handler(CallbackQueryHandler(button))
+        print("🤖 Bot is starting up...")
+        print(f"🌐 API URL: {API_URL}")
+        updater.start_polling()
+        print("✅ Bot is ready!")
+        updater.idle()
 
-    updater.start_polling()
-    updater.idle()
+    except Exception as e:
+        print(f"❌ Error starting bot: {str(e)}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

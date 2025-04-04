@@ -9,6 +9,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from app.database.database import get_db, engine
 from app.models.thread import Thread, Base
 from app.api.sync_service import sync_service
+from app.api.auth import get_api_key
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -38,19 +39,19 @@ def read_root():
     return {"message": "Welcome to the ED API"}
 
 @app.get("/threads/", response_model=List[dict])
-def get_threads(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+def get_threads(skip: int = 0, limit: int = 10, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     threads = db.query(Thread).offset(skip).limit(limit).all()
     return [thread.to_dict() for thread in threads]
 
 @app.get("/threads/{thread_id}")
-def get_thread(thread_id: str, db: Session = Depends(get_db)):
+def get_thread(thread_id: str, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     thread = db.query(Thread).filter(Thread.ed_thread_id == thread_id).first()
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     return thread.to_dict()
 
 @app.get("/search/similar/{thread_id}")
-def find_similar_threads(thread_id: str, limit: int = 5, db: Session = Depends(get_db)):
+def find_similar_threads(thread_id: str, limit: int = 5, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     # Get the target thread
     thread = db.query(Thread).filter(Thread.ed_thread_id == thread_id).first()
     if thread is None:
@@ -80,7 +81,7 @@ def find_similar_threads(thread_id: str, limit: int = 5, db: Session = Depends(g
     return similar_threads
 
 @app.post("/search/input")
-def find_similar_from_input(query: dict, limit: int = 5, db: Session = Depends(get_db)):
+def find_similar_from_input(query: dict, limit: int = 5, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """Find threads similar to a user-provided text input."""
     # Extract the user input text
     user_text = query.get("text", "")
@@ -112,7 +113,7 @@ def find_similar_from_input(query: dict, limit: int = 5, db: Session = Depends(g
     return similar_threads
 
 @app.get("/sync/status")
-def sync_status():
+def sync_status(api_key: str = Depends(get_api_key)):
     """Check the status of the sync service."""
     disable_sync = os.environ.get("DISABLE_SYNC", "0")
     return {
@@ -122,7 +123,7 @@ def sync_status():
     }
 
 @app.get("/project/part/{part}")
-def get_project_part(part: int, db: Session = Depends(get_db)):
+def get_project_part(part: int, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """Get a summary of distinct topics and their frequency for a project part."""
     if part not in range(1, 12):
         raise HTTPException(status_code=400, detail="Invalid project part number")
@@ -178,7 +179,7 @@ def get_project_part(part: int, db: Session = Depends(get_db)):
     }
 
 @app.post("/sync/trigger")
-def trigger_sync():
+def trigger_sync(api_key: str = Depends(get_api_key)):
     """Manually trigger a sync."""
     disable_sync = os.environ.get("DISABLE_SYNC", "0")
     if disable_sync == "1":

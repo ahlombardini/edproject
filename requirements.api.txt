@@ -7,3 +7,5 @@ sentence-transformers>=2.2.2
 numpy>=1.21.0
 pandas>=1.3.0
 ./edapi/edapi
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
