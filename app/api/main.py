@@ -78,13 +78,12 @@ def find_similar_threads(thread_id: str, limit: int = 5, db: Session = Depends(g
     # Get all threads
     all_threads = db.query(Thread).all()
 
-    # Convert embeddings from JSON strings to numpy arrays
-    target_embedding = np.array(json.loads(thread.embedding))
-    thread_embeddings = [np.array(json.loads(t.embedding)) for t in all_threads]
+    # Convert embeddings from JSON strings to numpy arrays and reshape to 2D
+    target_embedding = np.array(json.loads(thread.embedding)).reshape(1, -1)
+    thread_embeddings = [np.array(json.loads(t.embedding)).reshape(1, -1) for t in all_threads]
 
-    # Calculate similarities
-    similarities = [np.dot(target_embedding, emb) / (np.linalg.norm(target_embedding) * np.linalg.norm(emb))
-                   for emb in thread_embeddings]
+    # Calculate similarities using cosine_similarity
+    similarities = [float(cosine_similarity(target_embedding, emb)[0][0]) for emb in thread_embeddings]
 
     # Get indices of top similar threads (excluding the query thread)
     similar_indices = np.argsort(similarities)[::-1][1:limit+1]
@@ -154,7 +153,7 @@ def get_project_part(part: int, db: Session = Depends(get_db), api_key: str = De
     if not threads:
         return {"topics": [], "total_threads": 0}
 
-    # Convert embeddings from JSON strings to numpy arrays
+    # Convert embeddings from JSON strings to numpy arrays and reshape to 2D
     embeddings = [np.array(json.loads(thread.embedding)).reshape(1, -1) for thread in threads]
 
     # Use cosine similarity to group similar questions
