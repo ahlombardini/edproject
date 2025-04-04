@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List
 import json
@@ -43,6 +43,14 @@ async def shutdown_event():
     # Only try to stop if it's running
     if sync_service.is_running:
         sync_service.stop()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests."""
+    print(f"\n🔍 Request: {request.method} {request.url}")
+    print(f"Headers: {dict(request.headers)}")
+    response = await call_next(request)
+    return response
 
 @app.get("/")
 def read_root():
