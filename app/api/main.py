@@ -215,51 +215,74 @@ def trigger_sync(api_key: str = Depends(get_api_key)):
 def get_threads_by_category(
     category: str,
     subcategory: Optional[str] = None,
+    query: Optional[str] = None,
     limit: int = 50,
     skip: int = 0,
     db: Session = Depends(get_db),
     api_key: str = Depends(get_api_key)
 ):
     """
-    Get threads filtered by category and optionally by subcategory.
+    Get threads filtered by category and optionally by subcategory and text search.
 
     Parameters:
-    - category: Category to filter by (e.g., "projet", "general")
+    - category: Category to filter by (e.g., "Projet", "Cours")
     - subcategory: Optional subcategory to further filter results
+    - query: Optional text query to search for (uses semantic search with embeddings)
     - limit: Maximum number of threads to return
     - skip: Number of threads to skip (for pagination)
 
     Returns:
     - List of thread objects with count metadata
     """
-    # Build the query based on provided filters
-    query = db.query(Thread).filter(Thread.category == category)
+    # Build the base query for category filters
+    base_query = db.query(Thread).filter(Thread.category == category)
 
     # Add subcategory filter if provided
     if subcategory:
-        query = query.filter(Thread.subcategory == subcategory)
+        base_query = base_query.filter(Thread.subcategory == subcategory)
 
-    # Get total count before pagination
-    total_count = query.count()
+    # Get filtered threads based on category/subcategory
+    filtered_threads = base_query.all()
 
-    # Apply pagination
-    threads = query.order_by(Thread.created_at.desc()).offset(skip).limit(limit).all()
+    # If there's a search query, use semantic search to find relevant threads
+    if query and filtered_threads:
+        # Generate embedding for the user's query
+        user_embedding = model.encode(query).reshape(1, -1)
 
-    if not threads:
-        return {
-            "threads": [],
-            "total_count": 0,
-            "category": category,
-            "subcategory": subcategory,
-            "limit": limit,
-            "skip": skip
-        }
+        # Process each thread to calculate similarity
+        threads_with_similarity = []
+        for thread in filtered_threads:
+            # Convert thread embedding from JSON string to numpy array
+            thread_embedding = np.array(json.loads(thread.embedding)).reshape(1, -1)
 
+            # Calculate similarity
+            similarity = float(cosine_similarity(user_embedding, thread_embedding)[0][0])
+
+            # Create a thread dict with similarity score
+            thread_dict = thread.to_dict()
+            thread_dict['similarity'] = similarity
+            threads_with_similarity.append(thread_dict)
+
+        # Sort by similarity (highest first)
+        threads_with_similarity.sort(key=lambda x: x['similarity'], reverse=True)
+
+        # Apply pagination
+        total_count = len(threads_with_similarity)
+        result_threads = threads_with_similarity[skip:skip + limit]
+
+    else:
+        # No search query, just apply normal pagination to the filtered threads
+        total_count = base_query.count()
+        paginated_threads = base_query.order_by(Thread.created_at.desc()).offset(skip).limit(limit).all()
+        result_threads = [thread.to_dict() for thread in paginated_threads]
+
+    # Return the result with metadata
     return {
-        "threads": [thread.to_dict() for thread in threads],
+        "threads": result_threads,
         "total_count": total_count,
         "category": category,
         "subcategory": subcategory,
+        "query": query,
         "limit": limit,
         "skip": skip
     }
