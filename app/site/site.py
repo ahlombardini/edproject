@@ -310,11 +310,10 @@ def display_analytics(threads, query):
         st.markdown(f"- Category diversity: **{category_percentage:.1f}%** of all possible categories")
 
 # Create tabs for different functionalities
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "Search Questions",
     "Similar Threads",
-    "Browse by Category",
-    "Visualization (Beta) 🔬"
+    "Browse by Category"
 ])
 
 # Tab 1: Search Questions
@@ -325,21 +324,11 @@ with tab1:
     search_query = st.text_input("Your question:", key="search_input")
     search_limit = st.slider("Number of results:", min_value=1, max_value=30, value=15, key="search_limit")
 
-    # Create container for visualization
-    viz_container = st.empty()
-
-    # Add beta text above the checkbox
-    st.markdown("🔬 *Visualization (Beta)*", help="This visualization feature is in beta and may be improved over time")
-    show_viz = st.checkbox("Show 3D visualization", value=False)
-
     if st.button("Search", key="search_button"):
         if not search_query:
             st.warning("Please enter a question to search for.")
         else:
             try:
-                # Clear previous visualization
-                viz_container.empty()
-
                 similar_threads = make_api_request(
                     'POST',
                     '/search/input',
@@ -349,24 +338,6 @@ with tab1:
 
                 if similar_threads:
                     st.success(f"Found {len(similar_threads)} relevant questions")
-
-                    # Show visualization if requested
-                    if show_viz:
-                        try:
-                            with st.spinner("Generating 3D visualization..."):
-                                fig = visualize_search_results(similar_threads, search_query)
-                                viz_container.plotly_chart(
-                                    fig,
-                                    use_container_width=True,
-                                    theme="streamlit",
-                                    config={
-                                        'displayModeBar': True,
-                                        'displaylogo': False,
-                                        'modeBarButtonsToRemove': ['lasso2d', 'select2d']
-                                    }
-                                )
-                        except Exception as viz_error:
-                            st.error(f"Error generating visualization: {str(viz_error)}")
 
                     # Display results
                     st.markdown("### Search Results")
@@ -585,80 +556,3 @@ with tab3:
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
-
-# Tab 4: Visualization
-with tab4:
-    st.header("Visualization (Beta) 🔬")
-    st.markdown("""
-    This visualization shows the relationships between threads in 3D space using t-SNE dimensionality reduction.
-    Similar threads will appear closer together in the visualization.
-    """)
-
-    # Main settings
-    num_threads = st.slider(
-        "Number of threads to visualize:",
-        min_value=10,
-        max_value=200,
-        value=50,
-        help="Select how many threads to include in the visualization. More threads will take longer to process."
-    )
-
-    # Advanced options in expander
-    with st.expander("Advanced t-SNE Options"):
-        st.markdown("""
-        These parameters control how t-SNE arranges the threads in 3D space:
-        - **Perplexity**: Controls the balance between local and global structure. Higher values consider more global relationships.
-        - **Iterations**: More iterations can lead to better visualization but take longer to compute.
-        """)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            perplexity = st.slider(
-                "Perplexity",
-                min_value=5,
-                max_value=min(50, num_threads - 1),
-                value=min(30, num_threads - 1),
-                help="t-SNE perplexity parameter. Must be less than the number of threads."
-            )
-
-        with col2:
-            n_iter = st.slider(
-                "Iterations",
-                min_value=250,
-                max_value=2000,
-                value=1000,
-                step=250,
-                help="Number of iterations for t-SNE optimization"
-            )
-
-    # Create a container for the visualization
-    viz_container = st.empty()
-
-    if st.button("Generate Visualization"):
-        with st.spinner("Generating visualization... This may take a few minutes."):
-            try:
-                # Clear any existing visualization
-                viz_container.empty()
-
-                # Generate new visualization
-                fig = generate_visualization(
-                    perplexity=perplexity,
-                    n_iter=n_iter,
-                    num_threads=num_threads
-                )
-
-                # Display the visualization
-                viz_container.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    theme="streamlit",
-                    config={
-                        'displayModeBar': True,
-                        'displaylogo': False,
-                        'modeBarButtonsToRemove': ['lasso2d', 'select2d']
-                    }
-                )
-            except Exception as e:
-                st.error(f"Error generating visualization: {str(e)}")
-                st.info("Make sure the API is running and accessible.")
