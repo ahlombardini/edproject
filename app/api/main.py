@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import json
 import os
 from sentence_transformers import SentenceTransformer
@@ -210,3 +210,56 @@ def trigger_sync(api_key: str = Depends(get_api_key)):
     threading.Thread(target=sync_service._sync_threads).start()
 
     return {"status": "success", "message": "Sync triggered"}
+
+@app.get("/threads/category/{category}")
+def get_threads_by_category(
+    category: str,
+    subcategory: Optional[str] = None,
+    limit: int = 50,
+    skip: int = 0,
+    db: Session = Depends(get_db),
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Get threads filtered by category and optionally by subcategory.
+
+    Parameters:
+    - category: Category to filter by (e.g., "projet", "general")
+    - subcategory: Optional subcategory to further filter results
+    - limit: Maximum number of threads to return
+    - skip: Number of threads to skip (for pagination)
+
+    Returns:
+    - List of thread objects with count metadata
+    """
+    # Build the query based on provided filters
+    query = db.query(Thread).filter(Thread.category == category)
+
+    # Add subcategory filter if provided
+    if subcategory:
+        query = query.filter(Thread.subcategory == subcategory)
+
+    # Get total count before pagination
+    total_count = query.count()
+
+    # Apply pagination
+    threads = query.order_by(Thread.created_at.desc()).offset(skip).limit(limit).all()
+
+    if not threads:
+        return {
+            "threads": [],
+            "total_count": 0,
+            "category": category,
+            "subcategory": subcategory,
+            "limit": limit,
+            "skip": skip
+        }
+
+    return {
+        "threads": [thread.to_dict() for thread in threads],
+        "total_count": total_count,
+        "category": category,
+        "subcategory": subcategory,
+        "limit": limit,
+        "skip": skip
+    }
