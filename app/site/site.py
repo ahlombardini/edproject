@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import os
 from dotenv import load_dotenv
+from visualization import generate_visualization, visualize_search_results
 
 # Load environment variables
 load_dotenv()
@@ -13,12 +14,33 @@ API_KEY = os.getenv('API_KEY')
 # Headers for API requests
 HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 
-# Set page config
+# Set page config and title
 st.set_page_config(
-    page_title="ED Clean - Search",
+    page_title="Ed-Finder",
     page_icon="🔍",
     layout="wide"
 )
+
+# Custom CSS for styling
+st.markdown("""
+    <style>
+    .main-title {
+        font-size: 3em;
+        font-weight: bold;
+        margin-bottom: 0;
+        color: #1E88E5;
+    }
+    .subtitle {
+        font-size: 1.2em;
+        color: #666;
+        margin-bottom: 2em;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Title and description
+st.markdown('<p class="main-title">Ed-Finder 🔍</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Your Personal Assistant for Finding Ed Threads</p>', unsafe_allow_html=True)
 
 # Function to make API requests
 def make_api_request(method, endpoint, **kwargs):
@@ -81,18 +103,8 @@ def display_thread_cards(threads, show_similarity=True):
 
         st.markdown(html, unsafe_allow_html=True)
 
-# Title and description
-st.title("🔍 ED Clean - Search")
-st.markdown("""
-This tool helps you search through the ED discussions to find answers to your questions.
-""")
-
-if not API_KEY:
-    st.error("No API key configured. Please set the API_KEY environment variable.")
-    st.stop()
-
 # Create tabs for different functionalities
-tab1, tab2, tab3 = st.tabs(["Search Questions", "Similar Threads", "Browse by Category"])
+tab1, tab2, tab3, tab4 = st.tabs(["Search Questions", "Similar Threads", "Browse by Category", "Visualize Embeddings"])
 
 # Tab 1: Search Questions
 with tab1:
@@ -100,7 +112,10 @@ with tab1:
     st.markdown("Enter your question to find similar threads in the ED database.")
 
     search_query = st.text_input("Your question:", key="search_input")
-    search_limit = st.slider("Number of results:", min_value=1, max_value=15, value=5, key="search_limit")
+    search_limit = st.slider("Number of results:", min_value=1, max_value=30, value=15, key="search_limit")
+
+    show_viz = st.checkbox("Show 3D visualization", value=True,
+                          help="Display a 3D visualization of the search results, colored by similarity to your query")
 
     if st.button("Search", key="search_button"):
         if not search_query:
@@ -116,6 +131,16 @@ with tab1:
 
                 if similar_threads:
                     st.success(f"Found {len(similar_threads)} relevant questions")
+
+                    # Show visualization if requested
+                    if show_viz:
+                        try:
+                            with st.spinner("Generating 3D visualization..."):
+                                fig = visualize_search_results(similar_threads, search_query)
+                                st.plotly_chart(fig, use_container_width=True)
+                        except Exception as viz_error:
+                            st.error(f"Error generating visualization: {str(viz_error)}")
+
                     # Create a container for results with some spacing
                     results_container = st.container()
                     with results_container:
@@ -331,3 +356,46 @@ with tab3:
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
+
+# Tab 4: Visualization
+with tab4:
+    st.header("Visualize Thread Embeddings")
+    st.markdown("""
+    This visualization shows the relationships between threads in 3D space using t-SNE dimensionality reduction.
+    Similar threads will appear closer together in the visualization.
+
+    The visualization uses the embeddings stored in the database, which combine both category and text information.
+    You can adjust the t-SNE parameters to fine-tune how the relationships are displayed.
+    """)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        perplexity = st.slider(
+            "t-SNE Perplexity",
+            min_value=5,
+            max_value=50,
+            value=30,
+            help="t-SNE perplexity parameter. Higher values consider more global structure."
+        )
+
+    with col2:
+        max_iter = st.slider(
+            "t-SNE Max Iterations",
+            min_value=250,
+            max_value=2000,
+            value=1000,
+            help="Maximum number of iterations for t-SNE optimization"
+        )
+
+    if st.button("Generate Visualization"):
+        with st.spinner("Generating visualization... This may take a few minutes."):
+            try:
+                fig = generate_visualization(
+                    perplexity=perplexity,
+                    max_iter=max_iter
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error generating visualization: {str(e)}")
+                st.info("Make sure the API is running and accessible.")

@@ -28,6 +28,7 @@ class Thread(Base):
             "category": self.category,
             "subcategory": self.subcategory,
             "content_and_img_desc": self.content_and_img_desc,
+            "embedding": self.embedding,
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }
