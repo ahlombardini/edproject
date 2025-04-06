@@ -37,8 +37,13 @@ def make_api_request(method, endpoint, **kwargs):
         if hasattr(e, 'response') and e.response and e.response.status_code == 403:
             st.error("Invalid API key or authentication failed")
             return None
-        st.error(f"Error connecting to API: {str(e)}")
-        return None
+        elif hasattr(e, 'response') and e.response and e.response.status_code == 404:
+            # More specific error for 404s that includes the endpoint that wasn't found
+            st.error(f"API endpoint not found: {endpoint} - The requested feature may not be deployed yet.")
+            return None
+        else:
+            st.error(f"Error connecting to API: {str(e)}")
+            return None
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
         return None
@@ -147,70 +152,182 @@ with tab2:
 # Tab 3: Browse by Category
 with tab3:
     st.header("Browse by Category")
-    st.markdown("Browse threads by category and subcategory.")
+    st.markdown("""
+    Browse threads by category and optionally filter by subcategory and search terms.
+    The search will find semantically similar content within the selected category.
 
-    # Category selection
-    category_options = ["projet", "general", "private", "announcement"]
+    **Note:** This feature requires the latest API version to be deployed.
+    """)
+
+    # Get page from query params (for pagination) using the stable API instead of experimental
+    current_page = int(st.query_params.get("page", [1])[0]) if "page" in st.query_params else 1
+
+    # Track state for the category browse - using session state to persist across interactions
+    if "category_results" not in st.session_state:
+        st.session_state.category_results = None
+        st.session_state.total_count = 0
+        st.session_state.current_filters = {}
+
+    # Updated correct category options
+    category_options = ["Projet", "Cours", "Exercices", "Examens", "Divers"]
     selected_category = st.selectbox("Select Category:", options=category_options)
 
-    # Subcategory input field
-    subcategory = st.text_input("Subcategory (optional):", placeholder="E.g., Étape 1")
+    # Add search query field
+    search_query = st.text_input(
+        "Search within category (optional):",
+        placeholder="Enter keywords or a question",
+        help="Enter search terms to find semantically similar content within the selected category"
+    )
+
+    # Only show subcategory selector for Projet category
+    subcategory = None
+    if selected_category == "Projet":
+        # Create dropdown options for subcategories with correct formatting
+        subcategory_options = [""] + ["Étape " + str(i) for i in range(1, 13)] + ["Général"]
+        subcategory = st.selectbox(
+            "Subcategory:",
+            options=subcategory_options,
+            format_func=lambda x: "All subcategories" if x == "" else x,
+            help="Select a specific subcategory to filter results"
+        )
+        # Convert empty string to None to maintain API compatibility
+        if subcategory == "":
+            subcategory = None
 
     # Results per page
     results_per_page = st.slider("Results per page:", min_value=5, max_value=50, value=20, key="category_limit")
 
-    # Page number for pagination
-    page = st.number_input("Page:", min_value=1, value=1, step=1)
-    skip = (page - 1) * results_per_page
+    search_button = st.button("Browse", key="category_button")
 
-    if st.button("Browse", key="category_button"):
+    # Execute search either if button is clicked or if we're navigating pages of previous search
+    if search_button or (current_page > 1 and st.session_state.category_results is not None):
+        # If button clicked, reset to page 1; otherwise use current_page from URL
+        page = 1 if search_button else current_page
+        skip = (page - 1) * results_per_page
+
         try:
-            # Build the query parameters
-            params = {
+            # Only make API request on new search or changed page
+            if search_button or (st.session_state.current_filters != {
+                "category": selected_category,
+                "subcategory": subcategory,
+                "query": search_query,
                 "limit": results_per_page,
-                "skip": skip
-            }
+                "page": page
+            }):
+                # Build the query parameters
+                params = {
+                    "limit": results_per_page,
+                    "skip": skip
+                }
 
-            if subcategory:
-                params["subcategory"] = subcategory
+                if subcategory:  # Only add if not None
+                    params["subcategory"] = subcategory
 
-            # Make the API request
-            result = make_api_request(
-                'GET',
-                f'/threads/category/{selected_category}',
-                params=params
-            )
+                if search_query and search_query.strip():  # Only add if not empty
+                    params["query"] = search_query
 
-            if result and result.get("total_count", 0) > 0:
-                threads = result.get("threads", [])
-                total_count = result.get("total_count", 0)
+                # Save current filters for comparison on next render
+                st.session_state.current_filters = {
+                    "category": selected_category,
+                    "subcategory": subcategory,
+                    "query": search_query,
+                    "limit": results_per_page,
+                    "page": page
+                }
+
+                # Make the API request - first try the category endpoint
+                result = make_api_request(
+                    'GET',
+                    f'/threads/category/{selected_category}',
+                    params=params
+                )
+
+                # If category endpoint fails, try to fall back to the search endpoint
+                if result is None and search_query and search_query.strip():
+                    st.info("Attempting to fall back to general search with your query...")
+                    try:
+                        # Fall back to using the /search/input endpoint
+                        fallback_result = make_api_request(
+                            'POST',
+                            '/search/input',
+                            json={"text": search_query},
+                            params={"limit": results_per_page}
+                        )
+
+                        if fallback_result:
+                            # Convert to format similar to category endpoint result
+                            result = {
+                                "threads": fallback_result,
+                                "total_count": len(fallback_result),
+                                "category": None,
+                                "subcategory": None,
+                                "query": search_query
+                            }
+                            st.success("Successfully retrieved results using general search instead.")
+                    except Exception as fallback_error:
+                        st.error(f"Fallback search also failed: {str(fallback_error)}")
+
+                # Save results to session state
+                if result and result.get("total_count", 0) > 0:
+                    st.session_state.category_results = result.get("threads", [])
+                    st.session_state.total_count = result.get("total_count", 0)
+                else:
+                    st.session_state.category_results = []
+                    st.session_state.total_count = 0
+
+            # Display results from session state
+            if st.session_state.category_results and len(st.session_state.category_results) > 0:
+                threads = st.session_state.category_results
+                total_count = st.session_state.total_count
 
                 # Display results count and pagination info
-                total_pages = (total_count + results_per_page - 1) // results_per_page
-                st.success(f"Found {total_count} threads in category '{selected_category}'" +
-                          (f" with subcategory '{subcategory}'" if subcategory else "") +
-                          f" (Page {page} of {total_pages})")
+                filter_description = f"category '{selected_category}'"
+                if subcategory:
+                    filter_description += f", subcategory '{subcategory}'"
+                if search_query and search_query.strip():
+                    filter_description += f", search: '{search_query}'"
+
+                # Calculate total pages
+                total_pages = max(1, (total_count + results_per_page - 1) // results_per_page)
+
+                # Display results count with page info
+                st.success(f"Found {total_count} threads matching {filter_description}")
 
                 # Display pagination info
-                st.markdown(f"Showing results {skip + 1}-{min(skip + results_per_page, total_count)} of {total_count}")
+                st.markdown(f"Showing results {skip + 1}-{min(skip + results_per_page, total_count)} of {total_count} (Page {page} of {total_pages})")
 
                 # Create a container for results
                 results_container = st.container()
                 with results_container:
-                    display_thread_cards(threads, show_similarity=False)
+                    # Show similarity if search query was provided
+                    show_similarity = bool(search_query and search_query.strip())
+                    display_thread_cards(threads, show_similarity=show_similarity)
 
-                # Add simple pagination buttons
-                cols = st.columns(2)
-                with cols[0]:
+                # Add pagination controls
+                col1, col2 = st.columns(2)
+
+                with col1:
                     if page > 1:
-                        st.markdown(f"← [Previous Page](?page={page-1})")
-                with cols[1]:
-                    if page < total_pages:
-                        st.markdown(f"[Next Page](?page={page+1}) →")
+                        if st.button("← Previous Page"):
+                            # Update query parameters and rerun to navigate to previous page
+                            st.query_params.update(page=page-1)
+                            st.rerun()
 
-            elif result:
-                st.warning(f"No threads found for category '{selected_category}'" +
-                          (f" with subcategory '{subcategory}'" if subcategory else ""))
+                with col2:
+                    if page < total_pages:
+                        if st.button("Next Page →"):
+                            # Update query parameters and rerun to navigate to next page
+                            st.query_params.update(page=page+1)
+                            st.rerun()
+
+            else:
+                filter_description = f"category '{selected_category}'"
+                if subcategory:
+                    filter_description += f", subcategory '{subcategory}'"
+                if search_query and search_query.strip():
+                    filter_description += f", search: '{search_query}'"
+
+                st.warning(f"No threads found matching {filter_description}")
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
