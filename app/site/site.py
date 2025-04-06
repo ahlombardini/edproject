@@ -3,6 +3,10 @@ import requests
 import os
 from dotenv import load_dotenv
 from visualization import generate_visualization, visualize_search_results
+import plotly.express as px
+import plotly.graph_objects as go
+import pandas as pd
+from collections import Counter
 
 # Load environment variables
 load_dotenv()
@@ -113,6 +117,197 @@ def display_thread_cards(threads, show_similarity=True):
 
         st.markdown(html, unsafe_allow_html=True)
 
+def create_category_chart(threads):
+    """Create a pie chart showing the distribution of categories in search results."""
+    # Count categories
+    category_counts = Counter(thread['category'] for thread in threads)
+
+    # Create pie chart with improved configuration
+    fig = px.pie(
+        values=list(category_counts.values()),
+        names=list(category_counts.keys()),
+        height=200  # Reduced height for sidebar
+    )
+
+    # Update layout with explicit dimensions and settings
+    fig.update_layout(
+        showlegend=True,
+        margin=dict(l=10, r=10, t=10, b=10),  # Minimal margins for sidebar
+        title=None,  # Remove title since we use markdown
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor='rgba(255, 255, 255, 0.8)',  # Semi-transparent background
+            bordercolor='rgba(0,0,0,0.1)',
+            borderwidth=1,
+            font=dict(size=10)  # Smaller font for sidebar
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',  # Transparent background
+        font=dict(size=10)  # Smaller font size for sidebar
+    )
+
+    # Update traces for better hover information
+    fig.update_traces(
+        textposition='inside',
+        textinfo='percent+label',
+        hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>',
+        marker=dict(line=dict(color='#FFFFFF', width=1))  # Thin white borders between sections
+    )
+
+    return fig
+
+def create_similarity_histogram(threads):
+    """Create a histogram of similarity scores."""
+    similarities = [thread.get('similarity', 0) * 100 for thread in threads]
+
+    fig = go.Figure(data=[go.Histogram(
+        x=similarities,
+        nbinsx=10,
+        name="Similarity Distribution",
+        hovertemplate='Score: %{x:.1f}%<br>Count: %{y}<extra></extra>',
+        marker_color='rgb(55, 83, 109)'
+    )])
+
+    # Update layout with explicit dimensions and settings
+    fig.update_layout(
+        showlegend=False,
+        xaxis_title="Similarity Score (%)",
+        yaxis_title="Count",
+        height=200,  # Reduced height for sidebar
+        margin=dict(l=10, r=10, t=10, b=30),  # Minimal margins for sidebar
+        title=None,  # Remove title since we use markdown
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        yaxis=dict(
+            gridcolor='rgba(0,0,0,0.1)',
+            zeroline=True,
+            zerolinecolor='rgba(0,0,0,0.2)'
+        ),
+        xaxis=dict(
+            gridcolor='rgba(0,0,0,0.1)',
+            zeroline=True,
+            zerolinecolor='rgba(0,0,0,0.2)',
+            range=[0, 100],  # Force x-axis to show 0-100%
+            tickfont=dict(size=10)  # Smaller font for sidebar
+        ),
+        font=dict(size=10),  # Smaller font size for sidebar
+        bargap=0.1  # Add some gap between bars
+    )
+
+    return fig
+
+def create_subcategory_chart(threads):
+    """Create a pie chart showing the distribution of subcategories."""
+    # Count subcategories
+    subcategory_counts = Counter(
+        thread.get('subcategory', 'None')
+        for thread in threads
+    )
+
+    # Create pie chart with improved configuration
+    fig = px.pie(
+        values=list(subcategory_counts.values()),
+        names=list(subcategory_counts.keys()),
+        height=200  # Reduced height for sidebar
+    )
+
+    # Update layout with explicit dimensions and settings
+    fig.update_layout(
+        showlegend=True,
+        margin=dict(l=10, r=10, t=10, b=10),  # Minimal margins for sidebar
+        title=None,  # Remove title since we use markdown
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor='rgba(255, 255, 255, 0.8)',  # Semi-transparent background
+            bordercolor='rgba(0,0,0,0.1)',
+            borderwidth=1,
+            font=dict(size=10)  # Smaller font for sidebar
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',  # Transparent background
+        font=dict(size=10)  # Smaller font size for sidebar
+    )
+
+    # Update traces for better hover information
+    fig.update_traces(
+        textposition='inside',
+        textinfo='percent+label',
+        hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>',
+        marker=dict(line=dict(color='#FFFFFF', width=1))  # Thinner white borders between sections
+    )
+
+    return fig
+
+def display_analytics(threads, query):
+    """Display analytics and insights about the search results."""
+    with st.sidebar:
+        st.markdown("### 📊 Search Analytics")
+
+        if not threads:
+            st.warning("No results to analyze.")
+            return
+
+        # Create metrics row
+        st.metric("Results Found", len(threads))
+        st.metric("Average Similarity", f"{sum(thread.get('similarity', 0) * 100 for thread in threads) / len(threads):.1f}%")
+        st.metric("Unique Categories", len(set(thread['category'] for thread in threads)))
+
+        st.markdown("---")
+
+        # Category distribution
+        st.markdown("#### Category Distribution")
+        category_fig = create_category_chart(threads)
+        st.plotly_chart(
+            category_fig,
+            use_container_width=True,
+            theme=None  # Disable Streamlit theme to ensure proper rendering
+        )
+
+        st.markdown("---")
+
+        # Similarity histogram
+        st.markdown("#### Similarity Distribution")
+        similarity_fig = create_similarity_histogram(threads)
+        st.plotly_chart(
+            similarity_fig,
+            use_container_width=True,
+            theme=None  # Disable Streamlit theme to ensure proper rendering
+        )
+
+        st.markdown("---")
+
+        # Subcategory distribution
+        st.markdown("#### Subcategory Distribution")
+        subcategory_fig = create_subcategory_chart(threads)
+        st.plotly_chart(
+            subcategory_fig,
+            use_container_width=True,
+            theme=None  # Disable Streamlit theme to ensure proper rendering
+        )
+
+        st.markdown("---")
+
+        # Add insights
+        st.markdown("#### 🔍 Key Insights")
+
+        # Most common category
+        category_counts = Counter(thread['category'] for thread in threads)
+        most_common_cat = category_counts.most_common(1)[0]
+        st.markdown(f"- Most common category: **{most_common_cat[0]}** ({most_common_cat[1]} results)")
+
+        # Highest similarity
+        max_similarity = max(thread.get('similarity', 0) * 100 for thread in threads)
+        st.markdown(f"- Highest similarity score: **{max_similarity:.1f}%**")
+
+        # Category diversity
+        unique_categories = len(set(thread['category'] for thread in threads))
+        category_percentage = (unique_categories / len(category_counts)) * 100
+        st.markdown(f"- Category diversity: **{category_percentage:.1f}%** of all possible categories")
+
 # Create tabs for different functionalities
 tab1, tab2, tab3, tab4 = st.tabs([
     "Search Questions",
@@ -129,6 +324,9 @@ with tab1:
     search_query = st.text_input("Your question:", key="search_input")
     search_limit = st.slider("Number of results:", min_value=1, max_value=30, value=15, key="search_limit")
 
+    # Create container for visualization
+    viz_container = st.empty()
+
     # Add beta text above the checkbox
     st.markdown("🔬 *Visualization (Beta)*", help="This visualization feature is in beta and may be improved over time")
     show_viz = st.checkbox("Show 3D visualization", value=False)
@@ -138,6 +336,9 @@ with tab1:
             st.warning("Please enter a question to search for.")
         else:
             try:
+                # Clear previous visualization
+                viz_container.empty()
+
                 similar_threads = make_api_request(
                     'POST',
                     '/search/input',
@@ -153,14 +354,25 @@ with tab1:
                         try:
                             with st.spinner("Generating 3D visualization..."):
                                 fig = visualize_search_results(similar_threads, search_query)
-                                st.plotly_chart(fig, use_container_width=True)
+                                viz_container.plotly_chart(
+                                    fig,
+                                    use_container_width=True,
+                                    theme="streamlit",
+                                    config={
+                                        'displayModeBar': True,
+                                        'displaylogo': False,
+                                        'modeBarButtonsToRemove': ['lasso2d', 'select2d']
+                                    }
+                                )
                         except Exception as viz_error:
                             st.error(f"Error generating visualization: {str(viz_error)}")
 
-                    # Create a container for results with some spacing
-                    results_container = st.container()
-                    with results_container:
-                        display_thread_cards(similar_threads)
+                    # Display results
+                    st.markdown("### Search Results")
+                    display_thread_cards(similar_threads)
+
+                    # Display analytics
+                    display_analytics(similar_threads, search_query)
 
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
@@ -379,39 +591,73 @@ with tab4:
     st.markdown("""
     This visualization shows the relationships between threads in 3D space using t-SNE dimensionality reduction.
     Similar threads will appear closer together in the visualization.
-
-    The visualization uses the embeddings stored in the database, which combine both category and text information.
-    You can adjust the t-SNE parameters to fine-tune how the relationships are displayed.
     """)
 
-    col1, col2 = st.columns(2)
+    # Main settings
+    num_threads = st.slider(
+        "Number of threads to visualize:",
+        min_value=10,
+        max_value=200,
+        value=50,
+        help="Select how many threads to include in the visualization. More threads will take longer to process."
+    )
 
-    with col1:
-        perplexity = st.slider(
-            "t-SNE Perplexity",
-            min_value=5,
-            max_value=50,
-            value=30,
-            help="t-SNE perplexity parameter. Higher values consider more global structure."
-        )
+    # Advanced options in expander
+    with st.expander("Advanced t-SNE Options"):
+        st.markdown("""
+        These parameters control how t-SNE arranges the threads in 3D space:
+        - **Perplexity**: Controls the balance between local and global structure. Higher values consider more global relationships.
+        - **Iterations**: More iterations can lead to better visualization but take longer to compute.
+        """)
 
-    with col2:
-        max_iter = st.slider(
-            "t-SNE Max Iterations",
-            min_value=250,
-            max_value=2000,
-            value=1000,
-            help="Maximum number of iterations for t-SNE optimization"
-        )
+        col1, col2 = st.columns(2)
+
+        with col1:
+            perplexity = st.slider(
+                "Perplexity",
+                min_value=5,
+                max_value=min(50, num_threads - 1),
+                value=min(30, num_threads - 1),
+                help="t-SNE perplexity parameter. Must be less than the number of threads."
+            )
+
+        with col2:
+            n_iter = st.slider(
+                "Iterations",
+                min_value=250,
+                max_value=2000,
+                value=1000,
+                step=250,
+                help="Number of iterations for t-SNE optimization"
+            )
+
+    # Create a container for the visualization
+    viz_container = st.empty()
 
     if st.button("Generate Visualization"):
         with st.spinner("Generating visualization... This may take a few minutes."):
             try:
+                # Clear any existing visualization
+                viz_container.empty()
+
+                # Generate new visualization
                 fig = generate_visualization(
                     perplexity=perplexity,
-                    max_iter=max_iter
+                    n_iter=n_iter,
+                    num_threads=num_threads
                 )
-                st.plotly_chart(fig, use_container_width=True)
+
+                # Display the visualization
+                viz_container.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                    theme="streamlit",
+                    config={
+                        'displayModeBar': True,
+                        'displaylogo': False,
+                        'modeBarButtonsToRemove': ['lasso2d', 'select2d']
+                    }
+                )
             except Exception as e:
                 st.error(f"Error generating visualization: {str(e)}")
                 st.info("Make sure the API is running and accessible.")
