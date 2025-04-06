@@ -35,6 +35,16 @@ st.markdown("""
         color: #666;
         margin-bottom: 2em;
     }
+    .beta-tag {
+        background-color: #FF9800;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        font-weight: bold;
+        margin-left: 6px;
+        vertical-align: middle;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -104,7 +114,12 @@ def display_thread_cards(threads, show_similarity=True):
         st.markdown(html, unsafe_allow_html=True)
 
 # Create tabs for different functionalities
-tab1, tab2, tab3, tab4 = st.tabs(["Search Questions", "Similar Threads", "Browse by Category", "Visualize Embeddings"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Search Questions",
+    "Similar Threads",
+    "Browse by Category",
+    "Visualization (Beta) 🔬"
+])
 
 # Tab 1: Search Questions
 with tab1:
@@ -114,8 +129,9 @@ with tab1:
     search_query = st.text_input("Your question:", key="search_input")
     search_limit = st.slider("Number of results:", min_value=1, max_value=30, value=15, key="search_limit")
 
-    show_viz = st.checkbox("Show 3D visualization", value=True,
-                          help="Display a 3D visualization of the search results, colored by similarity to your query")
+    # Add beta text above the checkbox
+    st.markdown("🔬 *Visualization (Beta)*", help="This visualization feature is in beta and may be improved over time")
+    show_viz = st.checkbox("Show 3D visualization", value=False)
 
     if st.button("Search", key="search_button"):
         if not search_query:
@@ -193,16 +209,16 @@ with tab3:
         st.session_state.total_count = 0
         st.session_state.current_filters = {}
 
-    # Updated correct category options
-    category_options = ["Projet", "Cours", "Exercices", "Examens", "Divers"]
-    selected_category = st.selectbox("Select Category:", options=category_options)
-
-    # Add search query field
+    # Add search query field first
     search_query = st.text_input(
         "Search within category (optional):",
         placeholder="Enter keywords or a question",
         help="Enter search terms to find semantically similar content within the selected category"
     )
+
+    # Updated correct category options
+    category_options = ["Projet", "Cours", "Exercices", "Examens", "Divers"]
+    selected_category = st.selectbox("Select Category:", options=category_options)
 
     # Only show subcategory selector for Projet category
     subcategory = None
@@ -359,7 +375,7 @@ with tab3:
 
 # Tab 4: Visualization
 with tab4:
-    st.header("Visualize Thread Embeddings")
+    st.header("Visualization (Beta) 🔬")
     st.markdown("""
     This visualization shows the relationships between threads in 3D space using t-SNE dimensionality reduction.
     Similar threads will appear closer together in the visualization.
