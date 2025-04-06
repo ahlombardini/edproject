@@ -118,32 +118,42 @@ def display_thread_cards(threads, show_similarity=True):
         st.markdown(html, unsafe_allow_html=True)
 
 def create_category_chart(threads):
-    """Create a pie chart showing the distribution of categories in search results."""
-    # Count categories
-    category_counts = Counter(thread['category'] for thread in threads)
+    """Create a pie chart showing the distribution of categories/subcategories in search results."""
+    # Create a list of (label, count, category) tuples
+    distribution_data = []
+    for thread in threads:
+        category = thread['category']
+        subcategory = thread.get('subcategory')
+        label = f"{subcategory}" if subcategory else category
+        distribution_data.append((label, 1, category))
+
+    # Count occurrences
+    counts = Counter(distribution_data)
+
+    # Create DataFrame with the counts
+    df = pd.DataFrame([
+        {
+            "Label": label,
+            "Count": count,
+            "Category": category
+        }
+        for (label, _, category), count in counts.items()
+    ])
 
     # Create pie chart with improved configuration
     fig = px.pie(
-        values=list(category_counts.values()),
-        names=list(category_counts.keys()),
+        df,
+        values="Count",
+        names="Label",
+        color="Category",  # Color by parent category
         height=200  # Reduced height for sidebar
     )
 
     # Update layout with explicit dimensions and settings
     fig.update_layout(
-        showlegend=True,
+        showlegend=False,  # Remove legend
         margin=dict(l=10, r=10, t=10, b=10),  # Minimal margins for sidebar
         title=None,  # Remove title since we use markdown
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01,
-            bgcolor='rgba(255, 255, 255, 0.8)',  # Semi-transparent background
-            bordercolor='rgba(0,0,0,0.1)',
-            borderwidth=1,
-            font=dict(size=10)  # Smaller font for sidebar
-        ),
         paper_bgcolor='rgba(0,0,0,0)',  # Transparent background
         font=dict(size=10)  # Smaller font size for sidebar
     )
@@ -152,9 +162,11 @@ def create_category_chart(threads):
     fig.update_traces(
         textposition='inside',
         textinfo='percent+label',
-        hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>',
-        marker=dict(line=dict(color='#FFFFFF', width=1))  # Thin white borders between sections
+        hovertemplate='<b>%{label}</b><br>Category: %{customdata}<br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
     )
+
+    # Add category information to hover data
+    fig.update_traces(customdata=df['Category'])
 
     return fig
 
@@ -274,17 +286,6 @@ def display_analytics(threads, query):
         similarity_fig = create_similarity_histogram(threads)
         st.plotly_chart(
             similarity_fig,
-            use_container_width=True,
-            theme=None  # Disable Streamlit theme to ensure proper rendering
-        )
-
-        st.markdown("---")
-
-        # Subcategory distribution
-        st.markdown("#### Subcategory Distribution")
-        subcategory_fig = create_subcategory_chart(threads)
-        st.plotly_chart(
-            subcategory_fig,
             use_container_width=True,
             theme=None  # Disable Streamlit theme to ensure proper rendering
         )
