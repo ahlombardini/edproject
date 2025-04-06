@@ -14,7 +14,7 @@ passlib[bcrypt]==1.7.4
 python-telegram-bot==13.7
 
 # Site dependencies
-streamlit==1.31.0
+streamlit==1.37.0
 
 # Shared dependencies (using latest compatible versions)
 requests
